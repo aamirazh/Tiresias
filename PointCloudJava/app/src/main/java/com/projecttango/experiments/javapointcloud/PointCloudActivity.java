@@ -36,6 +36,7 @@ import com.projecttango.tangoutils.TangoPoseUtilities;
 
 
 import android.app.Activity;
+import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager.NameNotFoundException;
@@ -53,15 +54,20 @@ import org.rajawali3d.surface.RajawaliSurfaceView;
 import java.nio.FloatBuffer;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
+import java.util.Locale;
 
 import android.media.AudioManager;
 import android.media.ToneGenerator;
+import android.speech.tts.TextToSpeech;
+//import android.speech.tts.TextToSpeech.OnInitListener;
+
 /**
  * Main Activity class for the Point Cloud Sample. Handles the connection to the {@link Tango}
  * service and propagation of Tango XyzIj data to OpenGL and Layout views. OpenGL rendering logic is
  * delegated to the {@link PointCloudRajawaliRenderer} class.
  */
 public class PointCloudActivity extends Activity implements OnClickListener {
+    //, TextToSpeech.OnInitListener
 
     private static final String TAG = PointCloudActivity.class.getSimpleName();
     private static final int SECS_TO_MILLISECS = 1000;
@@ -104,12 +110,27 @@ public class PointCloudActivity extends Activity implements OnClickListener {
     private Object mUiPoseLock = new Object();
     private Object mUiDepthLock = new Object();
 
+    private String last = "";
+    private TextToSpeech tts;
+
+    private boolean goingDown=false;
+    private boolean goingUp =false;
+
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_jpoint_cloud);
         setTitle(R.string.app_name);
 
+        tts=new TextToSpeech(getApplicationContext(), new TextToSpeech.OnInitListener() {
+            @Override
+            public void onInit(int status) {
+                if (status != TextToSpeech.ERROR) {
+                    tts.setLanguage(Locale.UK);
+                }
+            }
+        });
         mTango = new Tango(this);
         mConfig = setupTangoConfig(mTango);
         setupTextViewsAndButtons(mConfig);
@@ -536,23 +557,79 @@ public class PointCloudActivity extends Activity implements OnClickListener {
 
     private String makeSounds(float[] depths) throws InterruptedException{
         if (depths == null) return "null";
-        if (depths[2] < 1.5 && depths[2] > 0){
-            playTone(2, depths[2]*2/3);
-            return "bot";
+        if (depths[2] < 1){
+            if(depths[1] < 0.7) {
+                //playTone(1, depths[1] * 2 / 3);
+                if (!last.equals("wall")){
+                    last = "wall";
+                    Speakcommand("wall",depths[1]*2/3);
+                }
+                return "wall";
+            }
+            if(depths[1] >1.5){
+                //playTone(1, depths[1]*2/3);
+                if(goingUp =true){
+                    goingUp =false;
+                    if (!last.equals("reaching top")){
+                        last = "reaching top";
+                        Speakcommand("reaching top",depths[1]*2/3); //reaching top
+                    }
+                    return "reaching top";
+                }
+                if (!last.equals("obstacle")){
+                    last = "obstacle";
+                    Speakcommand("obstacle",depths[1]*2/3); //obstacle
+                }
+                return "obstacle";}
+            else{
+                goingUp =true;
+                //playTone(1, depths[1]*2/3);
+                if (!last.equals("upstairs")){
+                    last = "upstairs";
+                    Speakcommand("upstairs",depths[1]*2/3); //stairs or slope
+                }
+                return "upstairs";}
+            }
+
+        if (depths[1] >3){
+            goingDown=true;
+            //playTone(1, depths[1]*2/3);
+            if (!last.equals("downstairs")){
+                last = "downstairs";
+                Speakcommand("downstairs", depths[1]*2/3); //downstairs
+            }
+            return "downstairs";
         }
-        if (depths[1] < 1.5 && depths[1] > 0){
-            playTone(1, depths[1]*2/3);
-            return "top";
+        if (depths[1] <2.5&&goingDown==true){
+            goingDown=false;
+            //playTone(1, depths[1]*2/3);
+            if (!last.equals("reaching bot")){
+                last = "reaching bot";
+                Speakcommand("reaching bot", depths[1]*2/3); //reaching bot
+            }
+            return "reaching bot";
         }
-        if (depths[0] < 1.5 && depths[0] > 0){
-            playTone(0,depths[0]*2/3);
-            return "left";
-        }
-        if (depths[3] < 1.5 && depths[3] > 0){
-            playTone(3,depths[3]*2/3);
+        if (depths[0] < 1){
+            //playTone(0,depths[0]*2/3);
+            if (!last.equals("right")){
+                last = "right";
+                Speakcommand("right", depths[0]*2/3);
+            }
             return "right";
         }
-
+        //left/right switched, next motion matches saying
+        if (depths[3] < 1){
+            //playTone(3,depths[3]*2/3);
+            if (!last.equals("left")){
+                last = "left";
+                Speakcommand("left", depths[3]*2/3);
+            }
+            return "left";
+        }
+        if (!last.equals("ok")){
+            last = "ok";
+            Speakcommand("ok", 1);
+        }
         return "ok";
     }
     public void playTone(int side, float intense) throws InterruptedException {
@@ -574,5 +651,47 @@ public class PointCloudActivity extends Activity implements OnClickListener {
         toneGenerator.startTone(toneType, durationMs);
         //toneGenerator.wait(durationMs + waitTime);
     }
+
+    private void Speakcommand(String side, float intense){
+        tts.setSpeechRate((float) 1);
+        float intensity=1-intense;
+        AudioManager am = (AudioManager)getSystemService(Context.AUDIO_SERVICE);
+        int amStreamMusicMaxVol = am.getStreamMaxVolume(am.STREAM_MUSIC);
+        //am.setStreamVolume(am.STREAM_MUSIC, (int) (amStreamMusicMaxVol*intensity), 0);
+        //am.setStreamVolume(am.STREAM_MUSIC, amStreamMusicMaxVol, 0);
+        String text= side;
+        tts.speak(text, TextToSpeech.QUEUE_FLUSH, null);
+    }
+/*
+    public void onInit(int status) {
+
+        if (status != TextToSpeech.ERROR) {
+
+            int result = tts.setLanguage(Locale.US);
+
+            if (result == TextToSpeech.LANG_MISSING_DATA
+                    || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+                Log.e("TTS", "This Language is not supported");
+            } else {
+                Speakcommand("start", 1);
+            }
+
+        } else {
+            Log.e("TTS", "Initilization Failed!");
+        }
+
+    }
+    */
+//    @Override
+//    public void onInit(int status){
+//        Log.d(&Speech&, &OnInit-Status [&+status+&]&);
+//
+//        if(status == TextToSpeech.SUCCESS){
+//            Log.d(&Speech&, &Success!&);
+//            engine.setLanguage(Locale.US);
+//        }
+//
+//        }
+
 
 }
