@@ -110,8 +110,10 @@ public class PointCloudActivity extends Activity implements OnClickListener {
     private Object mUiPoseLock = new Object();
     private Object mUiDepthLock = new Object();
 
-    private String last = "";
+    private String last = "ok";
+    private int count = 0;
     private TextToSpeech tts;
+    private float zMaxMid=0;
 
     private boolean goingDown=false;
     private boolean goingUp =false;
@@ -512,6 +514,7 @@ public class PointCloudActivity extends Activity implements OnClickListener {
         float minY = 0;
         float curx;
         float cury;
+        zMaxMid=0;
         //float totalZ = 0;
         //float averageZ = 0;
         for (int i = 0; i < pointCloudBuffer.capacity() - 3; i = i + 3) {
@@ -525,13 +528,14 @@ public class PointCloudActivity extends Activity implements OnClickListener {
             if(pointCloudBuffer.get(i)<minX+(maxX-minX)*1/6)
                 index = 0;
             if(pointCloudBuffer.get(i)>minX+(maxX-minX)*1/3 &&
-                    pointCloudBuffer.get(i) < minX+(maxX-minX)*2/3 &&
-                    pointCloudBuffer.get(i+1) < minY + (maxY-minY)/2)
-                index = 1;
-            if(pointCloudBuffer.get(i)>minX+(maxX-minX)*1/3 &&
-                    pointCloudBuffer.get(i) < minX+(maxX-minX)*2/3 &&
-                    pointCloudBuffer.get(i+1) > minY + (maxY-minY)/2)
-                index = 2;
+                    pointCloudBuffer.get(i) < minX+(maxX-minX)*2/3) {
+                if (pointCloudBuffer.get(i + 2) > zMaxMid) zMaxMid = pointCloudBuffer.get(i + 2);
+
+                if (pointCloudBuffer.get(i + 1) < minY + (maxY - minY) / 2)
+                    index = 1;
+                if (pointCloudBuffer.get(i + 1) > minY + (maxY - minY) / 2)
+                    index = 2;
+            }
             if(pointCloudBuffer.get(i)>minX+(maxX-minX)*5/6)
                 index = 3;
             if (index != 4){
@@ -560,48 +564,27 @@ public class PointCloudActivity extends Activity implements OnClickListener {
         if (depths[2] < 1){
             if(depths[1] < 0.7) {
                 //playTone(1, depths[1] * 2 / 3);
-                if (!last.equals("wall")){
-                    last = "wall";
-                    Speakcommand("wall",depths[1]*2/3);
-                }
+                speak("wall");
                 return "wall";
             }
             if(depths[1] >1.5){
                 //playTone(1, depths[1]*2/3);
-                if(goingUp =true){
-                    goingUp =false;
-                    if (!last.equals("reaching top")){
-                        last = "reaching top";
-                        Speakcommand("reaching top",depths[1]*2/3); //reaching top
-                    }
-                    return "reaching top";
-                }
-                if (!last.equals("obstacle")){
-                    last = "obstacle";
-                    Speakcommand("obstacle",depths[1]*2/3); //obstacle
-                }
-                return "obstacle";}
+                speak("obstacle");
+                return "obstacle";
+            }
             else{
-                goingUp =true;
                 //playTone(1, depths[1]*2/3);
-                if (!last.equals("upstairs")){
-                    last = "upstairs";
-                    Speakcommand("upstairs",depths[1]*2/3); //stairs or slope
-                }
-                return "upstairs";}
+                speak("upstairs");
+                return "upstairs";
+            }
             }
 
-        if (depths[1] >3){
-            goingDown=true;
+        else if (zMaxMid>3.5){
             //playTone(1, depths[1]*2/3);
-            if (!last.equals("downstairs")){
-                last = "downstairs";
-                Speakcommand("downstairs", depths[1]*2/3); //downstairs
-            }
+            speak("downstairs");
             return "downstairs";
         }
-        if (depths[1] <2.5&&goingDown==true){
-            goingDown=false;
+        /*if (depths[1] <2.5){
             //playTone(1, depths[1]*2/3);
             if (!last.equals("reaching bot")){
                 last = "reaching bot";
@@ -609,28 +592,31 @@ public class PointCloudActivity extends Activity implements OnClickListener {
             }
             return "reaching bot";
         }
-        if (depths[0] < 1){
+        */
+        else if (depths[0] < 0.7){
             //playTone(0,depths[0]*2/3);
-            if (!last.equals("right")){
-                last = "right";
-                Speakcommand("right", depths[0]*2/3);
-            }
+            speak("right");
             return "right";
         }
         //left/right switched, next motion matches saying
-        if (depths[3] < 1){
+        else if (depths[3] < 0.7){
             //playTone(3,depths[3]*2/3);
-            if (!last.equals("left")){
-                last = "left";
-                Speakcommand("left", depths[3]*2/3);
-            }
+            speak("left");
             return "left";
         }
-        if (!last.equals("ok")){
-            last = "ok";
-            Speakcommand("ok", 1);
+        else {speak("OK");
+        return "OK";}
+    }
+    public void speak(String cur){
+        if (!last.equals(cur)){
+            last=cur;
+            count = 1;
         }
-        return "ok";
+        else {
+            if (count == 2)
+                Speakcommand(cur);
+                count++;
+        }
     }
     public void playTone(int side, float intense) throws InterruptedException {
         int streamType = AudioManager.STREAM_MUSIC;
@@ -652,9 +638,9 @@ public class PointCloudActivity extends Activity implements OnClickListener {
         //toneGenerator.wait(durationMs + waitTime);
     }
 
-    private void Speakcommand(String side, float intense){
+    private void Speakcommand(String side){
         tts.setSpeechRate((float) 1);
-        float intensity=1-intense;
+        //float intensity=1-intense;
         AudioManager am = (AudioManager)getSystemService(Context.AUDIO_SERVICE);
         int amStreamMusicMaxVol = am.getStreamMaxVolume(am.STREAM_MUSIC);
         //am.setStreamVolume(am.STREAM_MUSIC, (int) (amStreamMusicMaxVol*intensity), 0);
